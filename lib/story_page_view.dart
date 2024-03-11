@@ -11,6 +11,8 @@ typedef _StoryItemBuilder = Widget Function(
   int storyIndex,
 );
 
+typedef _SwipeCallback = void Function(int pageIndex);
+
 typedef _StoryConfigFunction = int Function(int pageIndex);
 
 enum IndicatorAnimationCommand { pause, resume }
@@ -22,15 +24,14 @@ class StoryPageView extends StatefulWidget {
   StoryPageView({
     Key? key,
     required this.itemBuilder,
-    required this.storyLength,
+    this.storyLength,
     required this.pageLength,
     this.gestureItemBuilder,
     this.initialStoryIndex,
     this.initialPage = 0,
     this.onPageLimitReached,
     this.indicatorDuration = const Duration(seconds: 5),
-    this.indicatorPadding =
-        const EdgeInsets.symmetric(vertical: 32, horizontal: 8),
+    this.indicatorPadding = const EdgeInsets.symmetric(vertical: 32, horizontal: 8),
     this.backgroundColor = Colors.black,
     this.indicatorAnimationController,
     this.onPageChanged,
@@ -38,6 +39,8 @@ class StoryPageView extends StatefulWidget {
     this.indicatorUnvisitedColor = Colors.grey,
     this.indicatorHeight = 2,
     this.showShadow = false,
+    this.onSwipeUp,
+    this.onSwipeDown,
   }) : super(key: key);
 
   ///  visited color of [_Indicators]
@@ -55,7 +58,7 @@ class StoryPageView extends StatefulWidget {
   final _StoryItemBuilder? gestureItemBuilder;
 
   /// decides length of story for each page
-  final _StoryConfigFunction storyLength;
+  final _StoryConfigFunction? storyLength;
 
   /// length of [StoryPageView]
   final int pageLength;
@@ -88,6 +91,12 @@ class StoryPageView extends StatefulWidget {
 
   /// Whether to show shadow near indicator
   final bool showShadow;
+
+  /// Swipe callback
+  final _SwipeCallback? onSwipeUp;
+
+  /// Swipe callback
+  final _SwipeCallback? onSwipeDown;
 
   /// A stream with [IndicatorAnimationCommand] to force pause or continue inticator animation
   /// Useful when you need to show any popup over the story
@@ -129,8 +138,7 @@ class _StoryPageViewState extends State<StoryPageView> {
           final t = (index - currentPageValue);
           final rotationY = lerpDouble(0, 30, t as double)!;
           final maxOpacity = 0.8;
-          final num opacity =
-              lerpDouble(0, maxOpacity, t.abs())!.clamp(0.0, maxOpacity);
+          final num opacity = lerpDouble(0, maxOpacity, t.abs())!.clamp(0.0, maxOpacity);
           final isPaging = opacity != maxOpacity;
           final transform = Matrix4.identity();
           transform.setEntry(3, 2, 0.003);
@@ -141,16 +149,16 @@ class _StoryPageViewState extends State<StoryPageView> {
             child: Stack(
               children: [
                 _StoryPageBuilder.wrapped(
+                  onSwipeDown: widget.onSwipeDown,
+                  onSwipeUp: widget.onSwipeUp,
                   showShadow: widget.showShadow,
                   indicatorHeight: widget.indicatorHeight,
                   pageLength: widget.pageLength,
-                  storyLength: widget.storyLength(index),
+                  storyLength: widget.storyLength?.call(index) ?? 1,
                   initialStoryIndex: widget.initialStoryIndex?.call(index) ?? 0,
                   pageIndex: index,
                   animateToPage: (index) {
-                    pageController!.animateToPage(index,
-                        duration: Duration(milliseconds: 500),
-                        curve: Curves.ease);
+                    pageController!.animateToPage(index, duration: Duration(milliseconds: 500), curve: Curves.ease);
                   },
                   isCurrentPage: currentPageValue == index,
                   isPaging: isPaging,
@@ -159,8 +167,7 @@ class _StoryPageViewState extends State<StoryPageView> {
                   gestureItemBuilder: widget.gestureItemBuilder,
                   indicatorDuration: widget.indicatorDuration,
                   indicatorPadding: widget.indicatorPadding,
-                  indicatorAnimationController:
-                      widget.indicatorAnimationController,
+                  indicatorAnimationController: widget.indicatorAnimationController,
                   indicatorUnvisitedColor: widget.indicatorUnvisitedColor,
                   indicatorVisitedColor: widget.indicatorVisitedColor,
                 ),
@@ -199,6 +206,8 @@ class _StoryPageBuilder extends StatefulWidget {
     required this.indicatorVisitedColor,
     required this.indicatorHeight,
     required this.showShadow,
+    required this.onSwipeUp,
+    required this.onSwipeDown,
   }) : super(key: key);
   final int storyLength;
   final int initialStoryIndex;
@@ -214,6 +223,8 @@ class _StoryPageBuilder extends StatefulWidget {
   final Color indicatorUnvisitedColor;
   final double indicatorHeight;
   final bool showShadow;
+  final _SwipeCallback? onSwipeUp;
+  final _SwipeCallback? onSwipeDown;
 
   static Widget wrapped({
     required int pageIndex,
@@ -228,18 +239,17 @@ class _StoryPageBuilder extends StatefulWidget {
     _StoryItemBuilder? gestureItemBuilder,
     required Duration indicatorDuration,
     required EdgeInsetsGeometry indicatorPadding,
-    required ValueNotifier<IndicatorAnimationCommand>?
-        indicatorAnimationController,
+    required ValueNotifier<IndicatorAnimationCommand>? indicatorAnimationController,
     required Color indicatorVisitedColor,
     required Color indicatorUnvisitedColor,
     required double indicatorHeight,
     required bool showShadow,
+    required _SwipeCallback? onSwipeUp,
+    required _SwipeCallback? onSwipeDown,
   }) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(
-          create: (_context) => _StoryLimitController(),
-        ),
+        ChangeNotifierProvider(create: (_context) => _StoryLimitController()),
         ChangeNotifierProvider(
           create: (_context) => _StoryStackController(
             storyLength: storyLength,
@@ -250,9 +260,7 @@ class _StoryPageBuilder extends StatefulWidget {
             },
             onPageForward: () {
               if (pageIndex == pageLength - 1) {
-                _context
-                    .read<_StoryLimitController>()
-                    .onPageLimitReached(onPageLimitReached);
+                _context.read<_StoryLimitController>().onPageLimitReached(onPageLimitReached);
               } else {
                 animateToPage(pageIndex + 1);
               }
@@ -263,6 +271,8 @@ class _StoryPageBuilder extends StatefulWidget {
       ],
       child: _StoryPageBuilder._(
         showShadow: showShadow,
+        onSwipeDown: onSwipeDown,
+        onSwipeUp: onSwipeUp,
         storyLength: storyLength,
         initialStoryIndex: initialStoryIndex,
         pageIndex: pageIndex,
@@ -285,11 +295,8 @@ class _StoryPageBuilder extends StatefulWidget {
 }
 
 class _StoryPageBuilderState extends State<_StoryPageBuilder>
-    with
-        AutomaticKeepAliveClientMixin<_StoryPageBuilder>,
-        SingleTickerProviderStateMixin {
+    with AutomaticKeepAliveClientMixin<_StoryPageBuilder>, SingleTickerProviderStateMixin {
   late AnimationController animationController;
-
   late VoidCallback indicatorListener;
   late VoidCallback imageLoadingListener;
 
@@ -305,8 +312,7 @@ class _StoryPageBuilderState extends State<_StoryPageBuilder>
             break;
           case IndicatorAnimationCommand.resume:
           default:
-            if (storyImageLoadingController.value ==
-                StoryImageLoadingState.loading) {
+            if (storyImageLoadingController.value == StoryImageLoadingState.loading) {
               return;
             }
             animationController.forward();
@@ -321,8 +327,7 @@ class _StoryPageBuilderState extends State<_StoryPageBuilder>
             animationController.stop();
             break;
           case StoryImageLoadingState.available:
-            if (widget.indicatorAnimationController?.value ==
-                IndicatorAnimationCommand.pause) {
+            if (widget.indicatorAnimationController?.value == IndicatorAnimationCommand.pause) {
               return;
             }
             animationController.forward();
@@ -336,8 +341,9 @@ class _StoryPageBuilderState extends State<_StoryPageBuilder>
     )..addStatusListener(
         (status) {
           if (status == AnimationStatus.completed) {
-            context.read<_StoryStackController>().increment(
-                restartAnimation: () => animationController.forward(from: 0));
+            context
+                .read<_StoryStackController>()
+                .increment(restartAnimation: () => animationController.forward(from: 0));
           }
         },
       );
@@ -399,6 +405,8 @@ class _StoryPageBuilderState extends State<_StoryPageBuilder>
         ),
         _Gestures(
           animationController: animationController,
+          onSwipeDown: () => widget.onSwipeDown?.call(widget.pageIndex),
+          onSwipeUp: () => widget.onSwipeUp?.call(widget.pageIndex),
         ),
         Positioned.fill(
           child: widget.gestureItemBuilder?.call(
@@ -416,80 +424,80 @@ class _StoryPageBuilderState extends State<_StoryPageBuilder>
   bool get wantKeepAlive => true;
 }
 
-class _Gestures extends StatelessWidget {
+class _Gestures extends StatefulWidget {
   const _Gestures({
     Key? key,
+    required this.onSwipeUp,
+    required this.onSwipeDown,
     required this.animationController,
   }) : super(key: key);
 
+  final VoidCallback onSwipeUp;
+  final VoidCallback onSwipeDown;
   final AnimationController? animationController;
 
   @override
+  State<_Gestures> createState() => _GesturesState();
+}
+
+class _GesturesState extends State<_Gestures> {
+  DateTime? _tapStartTime;
+
+  bool get _isLongPress =>
+      _tapStartTime != null && DateTime.now().difference(_tapStartTime!) > Duration(milliseconds: 200);
+
+  void _handleTap(TapUpDetails details) {
+    if (_isLongPress) {
+      _tapStartTime = null;
+      return;
+    }
+    final screenWidth = MediaQuery.of(context).size.width;
+    final tapPosition = details.globalPosition.dx;
+    if (tapPosition < screenWidth / 2) {
+      // Left side
+      widget.animationController!.forward(from: 0);
+      context.read<_StoryStackController>().decrement();
+    } else {
+      // Right side
+      context.read<_StoryStackController>().increment(
+            restartAnimation: () => widget.animationController!.forward(from: 0),
+            completeAnimation: () => widget.animationController!.value = 1,
+          );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Container(
-            color: Colors.transparent,
-            child: GestureDetector(
-              onTap: () {
-                animationController!.forward(from: 0);
-                context.read<_StoryStackController>().decrement();
-              },
-              onTapDown: (_) {
-                animationController!.stop();
-              },
-              onTapUp: (_) {
-                if (storyImageLoadingController.value !=
-                    StoryImageLoadingState.loading) {
-                  animationController!.forward();
-                }
-              },
-              onLongPress: () {
-                animationController!.stop();
-              },
-              onLongPressUp: () {
-                if (storyImageLoadingController.value !=
-                    StoryImageLoadingState.loading) {
-                  animationController!.forward();
-                }
-              },
-            ),
-          ),
+    return Listener(
+      onPointerDown: (details) {
+        _tapStartTime = DateTime.now();
+        widget.animationController!.stop();
+      },
+      onPointerUp: (details) {
+        if (storyImageLoadingController.value != StoryImageLoadingState.loading) {
+          widget.animationController!.forward();
+        }
+        // if (_tapStartTime != null) {
+        //   final duration = DateTime.now().difference(_tapStartTime!);
+        //   print("Tap duration: ${duration.inMilliseconds} milliseconds");
+        // }
+      },
+      child: GestureDetector(
+        onTapUp: _handleTap,
+        onVerticalDragUpdate: (DragUpdateDetails details) {
+          if (_isLongPress) return;
+          if (details.delta.dy > 0) {
+            widget.onSwipeDown.call();
+          } else if (details.delta.dy < 0) {
+            widget.onSwipeUp.call();
+          }
+        },
+        child: Container(
+          color: Colors.transparent,
+          width: double.infinity,
+          height: double.infinity,
         ),
-        Expanded(
-          child: Container(
-            color: Colors.transparent,
-            child: GestureDetector(
-              onTap: () {
-                context.read<_StoryStackController>().increment(
-                      restartAnimation: () =>
-                          animationController!.forward(from: 0),
-                      completeAnimation: () => animationController!.value = 1,
-                    );
-              },
-              onTapDown: (_) {
-                animationController!.stop();
-              },
-              onTapUp: (_) {
-                if (storyImageLoadingController.value !=
-                    StoryImageLoadingState.loading) {
-                  animationController!.forward();
-                }
-              },
-              onLongPress: () {
-                animationController!.stop();
-              },
-              onLongPressUp: () {
-                if (storyImageLoadingController.value !=
-                    StoryImageLoadingState.loading) {
-                  animationController!.forward();
-                }
-              },
-            ),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
@@ -530,11 +538,10 @@ class _IndicatorsState extends State<_Indicators> {
     if (storyImageLoadingController.value != StoryImageLoadingState.loading) {
       widget.animationController!.forward();
     }
-    indicatorAnimation =
-        Tween(begin: 0.0, end: 1.0).animate(widget.animationController!)
-          ..addListener(() {
-            setState(() {});
-          });
+    indicatorAnimation = Tween(begin: 0.0, end: 1.0).animate(widget.animationController!)
+      ..addListener(() {
+        setState(() {});
+      });
   }
 
   @override
@@ -544,9 +551,7 @@ class _IndicatorsState extends State<_Indicators> {
     if (!widget.isCurrentPage && widget.isPaging) {
       widget.animationController!.stop();
     }
-    if (!widget.isCurrentPage &&
-        !widget.isPaging &&
-        widget.animationController!.value != 0) {
+    if (!widget.isCurrentPage && !widget.isPaging && widget.animationController!.value != 0) {
       widget.animationController!.value = 0;
     }
     if (widget.isCurrentPage &&
@@ -630,8 +635,7 @@ class _StoryStackController extends ValueNotifier<int> {
 
   int get limitIndex => storyLength - 1;
 
-  void increment(
-      {VoidCallback? restartAnimation, VoidCallback? completeAnimation}) {
+  void increment({VoidCallback? restartAnimation, VoidCallback? completeAnimation}) {
     if (value == limitIndex) {
       completeAnimation?.call();
       onPageForward();

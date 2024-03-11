@@ -1,3 +1,6 @@
+## [1.1.1]
+- Fix and add detected swipe to up and to down
+
 ## [1.1.0]
 - Added pause on onTapDown to mimic Instagram stories behaviour
 
