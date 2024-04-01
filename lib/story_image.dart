@@ -3,11 +3,12 @@ import 'package:flutter/material.dart';
 /// StoryImage
 enum StoryImageLoadingState {
   loading,
-  available,
+  available;
+
+  bool get isLoading => this == loading;
 }
 
-class StoryImageLoadingController
-    extends ValueNotifier<StoryImageLoadingState> {
+class StoryImageLoadingController extends ValueNotifier<StoryImageLoadingState> {
   StoryImageLoadingController._() : super(StoryImageLoadingState.available);
 }
 
@@ -73,9 +74,7 @@ class _StoryImageState extends State<StoryImage> {
         storyImageLoadingController.value = StoryImageLoadingState.available;
       },
     );
-    widget.imageProvider
-        .resolve(ImageConfiguration())
-        .addListener(imageStreamListener);
+    widget.imageProvider.resolve(ImageConfiguration()).addListener(imageStreamListener);
   }
 
   @override

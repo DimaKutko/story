@@ -15,7 +15,12 @@ typedef _SwipeCallback = void Function(int pageIndex);
 
 typedef _StoryConfigFunction = int Function(int pageIndex);
 
-enum IndicatorAnimationCommand { pause, resume }
+enum IndicatorAnimationCommand {
+  pause,
+  resume;
+
+  bool get isPause => this == pause;
+}
 
 /// PageView to implement story like UI
 ///
@@ -297,65 +302,73 @@ class _StoryPageBuilder extends StatefulWidget {
 class _StoryPageBuilderState extends State<_StoryPageBuilder>
     with AutomaticKeepAliveClientMixin<_StoryPageBuilder>, SingleTickerProviderStateMixin {
   late AnimationController animationController;
-  late VoidCallback indicatorListener;
-  late VoidCallback imageLoadingListener;
+  late bool _isCurrentPage;
+
+  var _animationProgress = 0.0;
 
   @override
   void initState() {
     super.initState();
+    _isCurrentPage = widget.isCurrentPage;
+    animationController = AnimationController(vsync: this, duration: widget.indicatorDuration);
+    animationController.addStatusListener(_animationControllerListener);
+    widget.indicatorAnimationController?.addListener(_indicatorListener);
+    storyImageLoadingController.addListener(_imageLoadingListener);
+  }
 
-    indicatorListener = () {
-      if (widget.isCurrentPage) {
-        switch (widget.indicatorAnimationController?.value) {
-          case IndicatorAnimationCommand.pause:
-            animationController.stop();
-            break;
-          case IndicatorAnimationCommand.resume:
-          default:
-            if (storyImageLoadingController.value == StoryImageLoadingState.loading) {
-              return;
-            }
-            animationController.forward();
-            break;
-        }
+  @override
+  void didUpdateWidget(covariant _StoryPageBuilder oldWidget) {
+    if (_isCurrentPage != widget.isCurrentPage) {
+      _isCurrentPage = widget.isCurrentPage;
+      if (_isCurrentPage) {
+        animationController.forward(from: 0);
+      } else {
+        animationController.stop();
       }
-    };
-    imageLoadingListener = () {
-      if (widget.isCurrentPage) {
-        switch (storyImageLoadingController.value) {
-          case StoryImageLoadingState.loading:
-            animationController.stop();
-            break;
-          case StoryImageLoadingState.available:
-            if (widget.indicatorAnimationController?.value == IndicatorAnimationCommand.pause) {
-              return;
-            }
-            animationController.forward();
-            break;
-        }
-      }
-    };
-    animationController = AnimationController(
-      vsync: this,
-      duration: widget.indicatorDuration,
-    )..addStatusListener(
-        (status) {
-          if (status == AnimationStatus.completed) {
-            context
-                .read<_StoryStackController>()
-                .increment(restartAnimation: () => animationController.forward(from: 0));
-          }
-        },
-      );
-    widget.indicatorAnimationController?.addListener(indicatorListener);
-    storyImageLoadingController.addListener(imageLoadingListener);
+    }
+    super.didUpdateWidget(oldWidget);
+  }
+
+  void _imageLoadingListener() {
+    if (!widget.isCurrentPage) return;
+    switch (storyImageLoadingController.value) {
+      case StoryImageLoadingState.loading:
+        animationController.stop();
+        break;
+      case StoryImageLoadingState.available:
+        if (widget.indicatorAnimationController?.value.isPause ?? false) return;
+        animationController.forward(from: 0);
+        break;
+    }
+  }
+
+  void _indicatorListener() {
+    if (!widget.isCurrentPage) return;
+    switch (widget.indicatorAnimationController?.value) {
+      case IndicatorAnimationCommand.pause:
+        _animationProgress = animationController.value < 0.3 ? 0 : animationController.value;
+        animationController.stop();
+        break;
+      case IndicatorAnimationCommand.resume:
+      default:
+        if (storyImageLoadingController.value.isLoading) return;
+        animationController.forward(from: _animationProgress);
+        break;
+    }
+  }
+
+  void _animationControllerListener(AnimationStatus status) {
+    if (status == AnimationStatus.completed) {
+      context.read<_StoryStackController>().increment(
+            restartAnimation: () => animationController.forward(from: 0),
+          );
+    }
   }
 
   @override
   void dispose() {
-    widget.indicatorAnimationController?.removeListener(indicatorListener);
-    storyImageLoadingController.removeListener(imageLoadingListener);
-
+    widget.indicatorAnimationController?.removeListener(_indicatorListener);
+    storyImageLoadingController.removeListener(_imageLoadingListener);
     super.dispose();
   }
 
@@ -442,6 +455,7 @@ class _Gestures extends StatefulWidget {
 
 class _GesturesState extends State<_Gestures> {
   DateTime? _tapStartTime;
+  bool dragEnd = true;
 
   bool get _isLongPress =>
       _tapStartTime != null && DateTime.now().difference(_tapStartTime!) > Duration(milliseconds: 200);
@@ -477,21 +491,21 @@ class _GesturesState extends State<_Gestures> {
         if (storyImageLoadingController.value != StoryImageLoadingState.loading) {
           widget.animationController!.forward();
         }
-        // if (_tapStartTime != null) {
-        //   final duration = DateTime.now().difference(_tapStartTime!);
-        //   print("Tap duration: ${duration.inMilliseconds} milliseconds");
-        // }
       },
       child: GestureDetector(
         onTapUp: _handleTap,
         onVerticalDragUpdate: (DragUpdateDetails details) {
-          if (_isLongPress) return;
-          if (details.delta.dy > 0) {
+          if (_isLongPress || !dragEnd) return;
+          dragEnd = false;
+          final trigger = 8;
+          if (details.delta.dy > trigger) {
             widget.onSwipeDown.call();
-          } else if (details.delta.dy < 0) {
+          } else if (details.delta.dy < -trigger) {
             widget.onSwipeUp.call();
           }
         },
+        onVerticalDragEnd: (_) => dragEnd = true,
+        onVerticalDragCancel: () => dragEnd = true,
         child: Container(
           color: Colors.transparent,
           width: double.infinity,
@@ -547,18 +561,11 @@ class _IndicatorsState extends State<_Indicators> {
   @override
   Widget build(BuildContext context) {
     final int currentStoryIndex = context.watch<_StoryStackController>().value;
-    final bool isStoryEnded = context.watch<_StoryLimitController>().value;
     if (!widget.isCurrentPage && widget.isPaging) {
       widget.animationController!.stop();
     }
     if (!widget.isCurrentPage && !widget.isPaging && widget.animationController!.value != 0) {
       widget.animationController!.value = 0;
-    }
-    if (widget.isCurrentPage &&
-        !widget.animationController!.isAnimating &&
-        !isStoryEnded &&
-        storyImageLoadingController.value != StoryImageLoadingState.loading) {
-      widget.animationController!.forward(from: 0);
     }
     return Padding(
       padding: widget.padding,
