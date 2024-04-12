@@ -530,7 +530,7 @@ class _Indicators extends StatefulWidget {
     required this.indicatorAnimationController,
   }) : super(key: key);
   final int storyLength;
-  final AnimationController? animationController;
+  final AnimationController animationController;
   final EdgeInsetsGeometry padding;
   final bool isCurrentPage;
   final bool isPaging;
@@ -544,28 +544,22 @@ class _Indicators extends StatefulWidget {
 }
 
 class _IndicatorsState extends State<_Indicators> {
-  late Animation<double> indicatorAnimation;
-
   @override
   void initState() {
     super.initState();
     if (storyImageLoadingController.value != StoryImageLoadingState.loading) {
-      widget.animationController!.forward();
+      widget.animationController.forward();
     }
-    indicatorAnimation = Tween(begin: 0.0, end: 1.0).animate(widget.animationController!)
-      ..addListener(() {
-        setState(() {});
-      });
   }
 
   @override
   Widget build(BuildContext context) {
     final int currentStoryIndex = context.watch<_StoryStackController>().value;
     if (!widget.isCurrentPage && widget.isPaging) {
-      widget.animationController!.stop();
+      widget.animationController.stop();
     }
-    if (!widget.isCurrentPage && !widget.isPaging && widget.animationController!.value != 0) {
-      widget.animationController!.value = 0;
+    if (!widget.isCurrentPage && !widget.isPaging && widget.animationController.value != 0) {
+      widget.animationController.value = 0;
     }
     return Padding(
       padding: widget.padding,
@@ -576,12 +570,9 @@ class _IndicatorsState extends State<_Indicators> {
           widget.storyLength,
           (index) => _Indicator(
             index: index,
+            isCurrent: index == currentStoryIndex,
+            controller: widget.animationController,
             indicatorHeight: widget.indicatorHeight,
-            value: (index == currentStoryIndex)
-                ? indicatorAnimation.value
-                : (index > currentStoryIndex)
-                    ? 0
-                    : 1,
             indicatorVisitedColor: widget.indicatorVisitedColor,
             indicatorUnvisitedColor: widget.indicatorUnvisitedColor,
           ),
@@ -593,24 +584,28 @@ class _IndicatorsState extends State<_Indicators> {
   @override
   void dispose() {
     super.dispose();
-    widget.animationController!.dispose();
+    widget.animationController.dispose();
   }
 }
 
-class _Indicator extends StatelessWidget {
+class _Indicator extends AnimatedWidget {
   const _Indicator({
     Key? key,
+    required AnimationController controller,
     required this.index,
-    required this.value,
+    required this.isCurrent,
     required this.indicatorVisitedColor,
     required this.indicatorUnvisitedColor,
     required this.indicatorHeight,
-  }) : super(key: key);
+  }) : super(key: key, listenable: controller);
+
   final int index;
-  final double value;
+  final bool isCurrent;
   final Color indicatorVisitedColor;
   final Color indicatorUnvisitedColor;
   final double indicatorHeight;
+
+  double get _progress => isCurrent ? (listenable as Animation<double>).value : 0.0;
 
   @override
   Widget build(BuildContext context) {
@@ -618,7 +613,7 @@ class _Indicator extends StatelessWidget {
       child: Padding(
         padding: EdgeInsets.only(left: (index == 0) ? 0 : 4),
         child: LinearProgressIndicator(
-          value: value,
+          value: _progress,
           backgroundColor: indicatorUnvisitedColor,
           valueColor: AlwaysStoppedAnimation<Color>(indicatorVisitedColor),
           minHeight: indicatorHeight,

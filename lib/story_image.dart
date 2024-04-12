@@ -68,13 +68,15 @@ class _StoryImageState extends State<StoryImage> {
   @override
   void initState() {
     super.initState();
-    storyImageLoadingController.value = StoryImageLoadingState.loading;
-    imageStreamListener = ImageStreamListener(
-      (image, synchronousCall) {
-        storyImageLoadingController.value = StoryImageLoadingState.available;
-      },
-    );
-    widget.imageProvider.resolve(ImageConfiguration()).addListener(imageStreamListener);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      storyImageLoadingController.value = StoryImageLoadingState.loading;
+      imageStreamListener = ImageStreamListener(
+        (image, synchronousCall) {
+          storyImageLoadingController.value = StoryImageLoadingState.available;
+        },
+      );
+      widget.imageProvider.resolve(ImageConfiguration()).addListener(imageStreamListener);
+    });
   }
 
   @override
